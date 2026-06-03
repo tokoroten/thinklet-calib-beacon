@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>THINKLET 較正ビーコン</title>
+<style>
+  :root{color-scheme:light}
+  *{box-sizing:border-box}
+  body{margin:0;background:#fff;color:#111;font-family:system-ui,-apple-system,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:14px}
+  #qrimg{width:72vmin;height:72vmin;background:#fff}
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center}
+  button{font-size:20px;padding:14px 22px;border-radius:12px;border:2px solid #111;background:#111;color:#fff}
+  button.off{background:#fff;color:#111}
+  label{font-size:16px}
+  small{color:#666;text-align:center}
+</style>
+</head>
+<body>
+  <img id="qrimg" src="qr.svg" alt="QR"/>
+  <div class="controls">
+    <button id="toggle" class="off">▶ 音を鳴らす</button>
+    <label>BPM <input id="bpm" type="range" min="40" max="300" value="120"/> <b id="bpmv">120</b></label>
+    <label><input type="checkbox" id="chirp"/> chirp(ピュッ)</label>
+  </div>
+  <small id="status">広帯域クリックを鳴らします。画面の明るさを最大に／スマホをTHINKLETの画角内へ。</small>
+<script>
+let ctx=null, timer=null, wl=null, on=false;
+const bpm=document.getElementById('bpm'), bpmv=document.getElementById('bpmv');
+const toggle=document.getElementById('toggle'), chirp=document.getElementById('chirp');
+bpm.oninput=()=>{ bpmv.textContent=bpm.value; if(on) restart(); };
+
+// 広帯域クリック（減衰ノイズバースト）: GCC-PHAT に最適な鋭いインパルス
+function clickBuffer(){
+  const dur=0.004, n=Math.max(1,Math.floor(ctx.sampleRate*dur));
+  const b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++){ const env=1-i/n; d[i]=(Math.random()*2-1)*env*env; }
+  return b;
+}
+// 短いアップチャープ: 自己相関が鋭く、聴き分けやすい
+function chirpBuffer(){
+  const dur=0.012, n=Math.floor(ctx.sampleRate*dur), b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
+  const f0=1200,f1=6500,k=(f1-f0)/dur;
+  for(let i=0;i<n;i++){ const t=i/ctx.sampleRate, ph=2*Math.PI*(f0*t+0.5*k*t*t), env=Math.sin(Math.PI*i/n);
+    d[i]=Math.sin(ph)*env; }
+  return b;
+}
+function fire(){
+  const src=ctx.createBufferSource(); src.buffer = chirp.checked ? chirpBuffer() : clickBuffer();
+  const g=ctx.createGain(); g.gain.value=0.95; src.connect(g).connect(ctx.destination); src.start();
+}
+function restart(){ clearInterval(timer); timer=setInterval(fire, 60000/parseInt(bpm.value)); }
+async function start(){
+  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();
+  await ctx.resume(); fire(); restart(); on=true;
+  toggle.textContent='■ 停止'; toggle.classList.remove('off');
+  try{ wl=await navigator.wakeLock.request('screen'); }catch(e){}
+}
+function stop(){ clearInterval(timer); on=false; toggle.textContent='▶ 音を鳴らす'; toggle.classList.add('off');
+  if(wl){ try{wl.release();}catch(e){} wl=null; } }
+toggle.onclick=()=> on ? stop() : start();
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&on&&navigator.wakeLock){
+  navigator.wakeLock.request('screen').then(w=>wl=w).catch(()=>{}); }});
+</script>
+</body>
+</html>
