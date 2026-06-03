@@ -8,35 +8,40 @@
   :root{color-scheme:light}
   *{box-sizing:border-box}
   body{margin:0;background:#fff;color:#111;font-family:system-ui,-apple-system,sans-serif;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:14px}
-  #qrimg{width:70vmin;height:70vmin;background:#fff}
-  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center}
-  button{font-size:20px;padding:14px 22px;border-radius:12px;border:2px solid #111;background:#111;color:#fff}
+    display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:12px;padding:10px}
+  #qrimg{width:88vmin;height:88vmin;background:#fff;cursor:pointer}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
+  button{font-size:20px;padding:13px 20px;border-radius:12px;border:2px solid #111;background:#111;color:#fff}
   button.off{background:#fff;color:#111}
-  label,select{font-size:16px}
-  small{color:#666;text-align:center;max-width:90vw}
+  label,select{font-size:15px}
+  small{color:#666;text-align:center;max-width:92vw}
+  /* 全画面QR */
+  body.fs{padding:0;gap:0}
+  body.fs .controls,body.fs small{display:none}
+  body.fs #qrimg{width:100vmin;height:100vmin}
 </style>
 </head>
 <body>
-  <img id="qrimg" src="qr.svg" alt="QR"/>
+  <img id="qrimg" src="qr.svg" alt="QR" title="タップで全画面/戻る"/>
   <div class="controls">
     <button id="toggle" class="off">▶ 音を鳴らす</button>
     <label>音:
       <select id="mode">
-        <option value="noise">連続ノイズ(スイープ較正向き)</option>
-        <option value="click">クリック(静止1ショット向き)</option>
+        <option value="noise">連続ノイズ(スイープ向き)</option>
+        <option value="click">クリック(静止1ショット)</option>
         <option value="chirp">チャープ</option>
       </select>
     </label>
     <label>BPM <input id="bpm" type="range" min="40" max="300" value="120"/> <b id="bpmv">120</b></label>
   </div>
-  <small>連続ノイズ＝動かしながら撮るスイープ較正に最適／クリック＝静止して1枚ずつ。画面の明るさは最大に。</small>
+  <small>QRをタップで全画面。明るさは最大に。スイープは「連続ノイズ」で。</small>
 <script>
 let ctx=null, timer=null, wl=null, on=false, noiseSrc=null, pinkBuf=null;
 const bpm=document.getElementById('bpm'), bpmv=document.getElementById('bpmv');
-const toggle=document.getElementById('toggle'), mode=document.getElementById('mode');
+const toggle=document.getElementById('toggle'), mode=document.getElementById('mode'), qrimg=document.getElementById('qrimg');
 bpm.oninput=()=>{ bpmv.textContent=bpm.value; if(on && mode.value!=='noise') restart(); };
 mode.onchange=()=>{ if(on){ stop(); start(); } };
+qrimg.onclick=()=> document.body.classList.toggle('fs');
 
 function pinkBuffer(seconds){
   const n=Math.floor(ctx.sampleRate*seconds), b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
