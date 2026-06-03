@@ -9,56 +9,74 @@
   *{box-sizing:border-box}
   body{margin:0;background:#fff;color:#111;font-family:system-ui,-apple-system,sans-serif;
     display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:14px}
-  #qrimg{width:72vmin;height:72vmin;background:#fff}
+  #qrimg{width:70vmin;height:70vmin;background:#fff}
   .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center}
   button{font-size:20px;padding:14px 22px;border-radius:12px;border:2px solid #111;background:#111;color:#fff}
   button.off{background:#fff;color:#111}
-  label{font-size:16px}
-  small{color:#666;text-align:center}
+  label,select{font-size:16px}
+  small{color:#666;text-align:center;max-width:90vw}
 </style>
 </head>
 <body>
   <img id="qrimg" src="qr.svg" alt="QR"/>
   <div class="controls">
     <button id="toggle" class="off">▶ 音を鳴らす</button>
+    <label>音:
+      <select id="mode">
+        <option value="noise">連続ノイズ(スイープ較正向き)</option>
+        <option value="click">クリック(静止1ショット向き)</option>
+        <option value="chirp">チャープ</option>
+      </select>
+    </label>
     <label>BPM <input id="bpm" type="range" min="40" max="300" value="120"/> <b id="bpmv">120</b></label>
-    <label><input type="checkbox" id="chirp"/> chirp(ピュッ)</label>
   </div>
-  <small id="status">広帯域クリックを鳴らします。画面の明るさを最大に／スマホをTHINKLETの画角内へ。</small>
+  <small>連続ノイズ＝動かしながら撮るスイープ較正に最適／クリック＝静止して1枚ずつ。画面の明るさは最大に。</small>
 <script>
-let ctx=null, timer=null, wl=null, on=false;
+let ctx=null, timer=null, wl=null, on=false, noiseSrc=null, pinkBuf=null;
 const bpm=document.getElementById('bpm'), bpmv=document.getElementById('bpmv');
-const toggle=document.getElementById('toggle'), chirp=document.getElementById('chirp');
-bpm.oninput=()=>{ bpmv.textContent=bpm.value; if(on) restart(); };
+const toggle=document.getElementById('toggle'), mode=document.getElementById('mode');
+bpm.oninput=()=>{ bpmv.textContent=bpm.value; if(on && mode.value!=='noise') restart(); };
+mode.onchange=()=>{ if(on){ stop(); start(); } };
 
-// 広帯域クリック（減衰ノイズバースト）: GCC-PHAT に最適な鋭いインパルス
-function clickBuffer(){
-  const dur=0.004, n=Math.max(1,Math.floor(ctx.sampleRate*dur));
-  const b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
-  for(let i=0;i<n;i++){ const env=1-i/n; d[i]=(Math.random()*2-1)*env*env; }
+function pinkBuffer(seconds){
+  const n=Math.floor(ctx.sampleRate*seconds), b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
+  let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+  for(let i=0;i<n;i++){ const w=Math.random()*2-1;
+    b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759; b2=0.96900*b2+w*0.1538520;
+    b3=0.86650*b3+w*0.3104856; b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+    d[i]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)*0.11; b6=w*0.115926; }
   return b;
 }
-// 短いアップチャープ: 自己相関が鋭く、聴き分けやすい
+function clickBuffer(){
+  const dur=0.004, n=Math.max(1,Math.floor(ctx.sampleRate*dur)), b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++){ const env=1-i/n; d[i]=(Math.random()*2-1)*env*env; } return b;
+}
 function chirpBuffer(){
   const dur=0.012, n=Math.floor(ctx.sampleRate*dur), b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0);
   const f0=1200,f1=6500,k=(f1-f0)/dur;
-  for(let i=0;i<n;i++){ const t=i/ctx.sampleRate, ph=2*Math.PI*(f0*t+0.5*k*t*t), env=Math.sin(Math.PI*i/n);
-    d[i]=Math.sin(ph)*env; }
-  return b;
+  for(let i=0;i<n;i++){ const t=i/ctx.sampleRate, ph=2*Math.PI*(f0*t+0.5*k*t*t), env=Math.sin(Math.PI*i/n); d[i]=Math.sin(ph)*env; } return b;
 }
-function fire(){
-  const src=ctx.createBufferSource(); src.buffer = chirp.checked ? chirpBuffer() : clickBuffer();
+function tick(){
+  const src=ctx.createBufferSource(); src.buffer = mode.value==='chirp'? chirpBuffer():clickBuffer();
   const g=ctx.createGain(); g.gain.value=0.95; src.connect(g).connect(ctx.destination); src.start();
 }
-function restart(){ clearInterval(timer); timer=setInterval(fire, 60000/parseInt(bpm.value)); }
+function restart(){ clearInterval(timer); timer=setInterval(tick, 60000/parseInt(bpm.value)); }
 async function start(){
-  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();
-  await ctx.resume(); fire(); restart(); on=true;
-  toggle.textContent='■ 停止'; toggle.classList.remove('off');
+  ctx=ctx||new (window.AudioContext||window.webkitAudioContext)(); await ctx.resume();
+  if(mode.value==='noise'){
+    pinkBuf=pinkBuf||pinkBuffer(3);
+    noiseSrc=ctx.createBufferSource(); noiseSrc.buffer=pinkBuf; noiseSrc.loop=true;
+    const g=ctx.createGain(); g.gain.value=0.8; noiseSrc.connect(g).connect(ctx.destination); noiseSrc.start();
+  } else { tick(); restart(); }
+  on=true; toggle.textContent='■ 停止'; toggle.classList.remove('off');
   try{ wl=await navigator.wakeLock.request('screen'); }catch(e){}
 }
-function stop(){ clearInterval(timer); on=false; toggle.textContent='▶ 音を鳴らす'; toggle.classList.add('off');
-  if(wl){ try{wl.release();}catch(e){} wl=null; } }
+function stop(){
+  clearInterval(timer);
+  if(noiseSrc){ try{noiseSrc.stop();}catch(e){} noiseSrc=null; }
+  on=false; toggle.textContent='▶ 音を鳴らす'; toggle.classList.add('off');
+  if(wl){ try{wl.release();}catch(e){} wl=null; }
+}
 toggle.onclick=()=> on ? stop() : start();
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&on&&navigator.wakeLock){
   navigator.wakeLock.request('screen').then(w=>wl=w).catch(()=>{}); }});
