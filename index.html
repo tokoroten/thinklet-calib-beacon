@@ -22,7 +22,7 @@
 </style>
 </head>
 <body>
-  <img id="qrimg" src="qr.svg" alt="QR" title="タップで全画面/戻る"/>
+  <img id="qrimg" src="aruco.png" alt="marker" title="タップで全画面/戻る"/>
   <div class="controls">
     <button id="toggle" class="off">▶ 音を鳴らす</button>
     <label>音:
@@ -34,7 +34,7 @@
     </label>
     <label>BPM <input id="bpm" type="range" min="40" max="300" value="120"/> <b id="bpmv">120</b></label>
   </div>
-  <small>QRをタップで全画面。明るさは最大に。スイープは「連続ノイズ」で。</small>
+  <small>マーカーをタップで全画面。画面の明るさは<b>中くらい</b>に（明るすぎ＝白飛びで検出不可）。スイープは「連続ノイズ」で。</small>
 <script>
 let ctx=null, timer=null, wl=null, on=false, noiseSrc=null, pinkBuf=null;
 const bpm=document.getElementById('bpm'), bpmv=document.getElementById('bpmv');
